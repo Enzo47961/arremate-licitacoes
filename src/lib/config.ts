@@ -24,31 +24,37 @@ function int(value: string | undefined, fallback: number): number {
 
 /**
  * Provedor de IA. Todos falam o formato da API OpenAI; muda só endereço, chave e modelo.
- * Gemini (camada gratuita do Google AI Studio) tem prioridade: janela de 1M de
- * tokens e cota diária generosa, sem custo. DeepSeek fica como alternativa paga.
+ * DeepSeek (pago, barato, janela de 1M de tokens) tem prioridade porque responde rápido
+ * e com qualidade constante. Gemini (camada gratuita) fica como alternativa sem custo,
+ * mas sofre com sobrecarga nos horários de pico.
  */
-const provedor = env.GEMINI_API_KEY?.trim()
-  ? {
-      nome: 'gemini' as const,
-      apiKey: env.GEMINI_API_KEY.trim(),
-      baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
-      model: env.GEMINI_MODEL?.trim() || 'gemini-3.6-flash',
-      /** Modelos tentados, em ordem, quando o principal está sobrecarregado (503/429). */
-      reservas: (env.GEMINI_MODELOS_RESERVA?.trim() || 'gemini-3.5-flash,gemini-3.5-flash-lite,gemini-3.1-flash-lite').split(',').map((m) => m.trim()).filter(Boolean),
-      contexto: 1_000_000,
-      precoEntrada: 0,
-      precoSaida: 0,
-    }
-  : {
-      nome: 'deepseek' as const,
-      apiKey: env.DEEPSEEK_API_KEY?.trim() ?? '',
-      baseUrl: (env.DEEPSEEK_BASE_URL?.trim() || 'https://api.deepseek.com').replace(/\/+$/, ''),
-      model: env.DEEPSEEK_MODEL?.trim() || 'deepseek-chat',
-      reservas: [] as string[],
-      contexto: 64_000,
-      precoEntrada: 0.27,
-      precoSaida: 1.1,
-    };
+const deepseek = {
+  nome: 'deepseek' as const,
+  apiKey: env.DEEPSEEK_API_KEY?.trim() ?? '',
+  baseUrl: (env.DEEPSEEK_BASE_URL?.trim() || 'https://api.deepseek.com').replace(/\/+$/, ''),
+  model: env.DEEPSEEK_MODEL?.trim() || 'deepseek-flash',
+  reservas: [] as string[],
+  contexto: 1_000_000,
+  precoEntrada: 0.27,
+  precoSaida: 1.1,
+};
+
+const gemini = {
+  nome: 'gemini' as const,
+  apiKey: env.GEMINI_API_KEY?.trim() ?? '',
+  baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
+  model: env.GEMINI_MODEL?.trim() || 'gemini-3.6-flash',
+  /** Modelos tentados, em ordem, quando o principal está sobrecarregado (503/429). */
+  reservas: (env.GEMINI_MODELOS_RESERVA?.trim() || 'gemini-3.5-flash,gemini-3.5-flash-lite,gemini-3.1-flash-lite')
+    .split(',')
+    .map((m) => m.trim())
+    .filter(Boolean),
+  contexto: 1_000_000,
+  precoEntrada: 0,
+  precoSaida: 0,
+};
+
+const provedor = deepseek.apiKey ? deepseek : gemini;
 
 export const config = {
   /** Provedor de IA (compatível com a API OpenAI). */
@@ -58,6 +64,12 @@ export const config = {
     baseUrl: provedor.baseUrl,
     model: provedor.model,
     fallbackModels: provedor.reservas,
+    /**
+     * Nível de raciocínio (`reasoning_effort`) para modelos que o aceitam. Na DeepSeek
+     * V4 o padrão do provedor é "high", que pode passar de 3 min por edital; "low"
+     * mantém a extração fiel e responde bem mais rápido.
+     */
+    reasoningEffort: env.AI_ESFORCO?.trim() || (provedor.nome === 'deepseek' ? 'low' : ''),
     /** Modelo usado na etapa de síntese final (documentos longos). */
     synthesisModel: env.DEEPSEEK_SYNTHESIS_MODEL?.trim() || provedor.model,
     timeoutMs: num(env.AI_TIMEOUT_MS, 180_000),
@@ -66,7 +78,7 @@ export const config = {
      * Tempo total que a IA tem para concluir uma análise. Acima disso o relatório
      * sai pelo motor local. Fica abaixo do limite de 300 s da função na Vercel.
      */
-    totalBudgetMs: num(env.AI_ORCAMENTO_TOTAL_MS, 210_000),
+    totalBudgetMs: num(env.AI_ORCAMENTO_TOTAL_MS, 250_000),
     temperature: Number.isFinite(Number(env.AI_TEMPERATURE)) ? Number(env.AI_TEMPERATURE) : 0,
     /**
      * Orçamento de saída das respostas do modelo. O schema completo de uma
@@ -114,7 +126,7 @@ export const config = {
   /** Estratégia de divisão do documento para editais longos. */
   chunking: {
     /** Até este tamanho o edital é analisado em uma única chamada. */
-    singleCallMaxChars: num(env.SINGLE_CALL_MAX_CHARS, provedor.nome === 'gemini' ? 400_000 : 60_000),
+    singleCallMaxChars: num(env.SINGLE_CALL_MAX_CHARS, 400_000),
     /** Tamanho alvo de cada bloco no modo mapa-redução. */
     chunkChars: num(env.CHUNK_CHARS, 14_000),
     /** Sobreposição entre blocos para não perder contexto nas fronteiras. */

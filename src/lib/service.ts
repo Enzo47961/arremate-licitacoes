@@ -3,7 +3,7 @@ import { createJob, findByHash, linkHash, refreshJobPresentation, type Job } fro
 import { failJob, runAnalysis } from './analysis';
 import { AppError } from './errors';
 import { config, hasAIProvider } from './config';
-import { consumirAnalise } from './limite';
+import { consumirAnalise, estornarAnalise, type Identidade } from './limite';
 
 /** Validação do upload: tipo, tamanho e nome. */
 export function validateUpload(file: File, buffer: Buffer): void {
@@ -48,8 +48,8 @@ export type StartAnalysisInput = {
   fileName: string;
   fileSize: number;
   isDemo?: boolean;
-  /** IP de quem pediu — usado no limite de uso da IA. */
-  ip?: string;
+  /** Quem pediu (IP + navegador) — usado na cota de análises com IA. */
+  quem?: Identidade;
 };
 
 export type StartedAnalysis = {
@@ -61,7 +61,7 @@ export type StartedAnalysis = {
  * Cria (ou reaproveita) o job e dispara o pipeline em background.
  * Retorna imediatamente para que a interface possa acompanhar o progresso.
  */
-export function startAnalysis(input: StartAnalysisInput): StartedAnalysis {
+export async function startAnalysis(input: StartAnalysisInput): Promise<StartedAnalysis> {
   const key = cacheKey(input.buffer);
 
   // Reaproveita o resultado quando o MESMO arquivo já foi analisado com o mesmo
@@ -76,7 +76,7 @@ export function startAnalysis(input: StartAnalysisInput): StartedAnalysis {
   }
 
   // Só análises novas com IA consomem cota; o que veio do cache acima é de graça.
-  if (hasAIProvider() && input.ip) consumirAnalise(input.ip);
+  const usoId = hasAIProvider() && input.quem ? await consumirAnalise(input.quem) : null;
 
   const job = createJob({
     fileName: input.fileName,
@@ -91,9 +91,15 @@ export function startAnalysis(input: StartAnalysisInput): StartedAnalysis {
     fileSize: input.fileSize,
     isDemo: input.isDemo,
     hash: key,
-  }).catch((error: unknown) => {
-    failJob(job.id, error);
-  });
+  })
+    .then((result) => {
+      // A IA caiu e o relatório saiu pelo motor local: não conta na cota.
+      if (result.meta.engine === 'local-demo') void estornarAnalise(usoId);
+    })
+    .catch((error: unknown) => {
+      failJob(job.id, error);
+      void estornarAnalise(usoId);
+    });
 
   return { job, reused: false };
 }

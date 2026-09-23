@@ -129,6 +129,7 @@ export async function createJsonCompletion(options: {
           temperature: options.temperature ?? config.ai.temperature,
           max_tokens: budget,
           response_format: { type: 'json_object' },
+          ...(config.ai.reasoningEffort ? { reasoning_effort: config.ai.reasoningEffort } : {}),
           stream: false,
         }),
         signal: controller.signal,

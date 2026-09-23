@@ -6,7 +6,7 @@ import { escolherArquivoEdital } from '@/lib/pncp/compra';
 import { startAnalysis } from '@/lib/service';
 import { jobStreamResponse } from '@/lib/stream';
 import { getJob } from '@/lib/store';
-import { ipDaRequisicao } from '@/lib/limite';
+import { identidadeDaRequisicao } from '@/lib/limite';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -38,7 +38,12 @@ export async function POST(request: Request) {
 
     const buffer = await baixarPdf(arquivo.url);
     const fileName = /\.pdf$/i.test(arquivo.titulo) ? arquivo.titulo : `${arquivo.titulo}.pdf`;
-    const { job, reused } = startAnalysis({ buffer, fileName, fileSize: buffer.byteLength, ip: ipDaRequisicao(request) });
+    const { job, reused } = await startAnalysis({
+      buffer,
+      fileName,
+      fileSize: buffer.byteLength,
+      quem: identidadeDaRequisicao(request),
+    });
 
     const response = jobStreamResponse(getJob(job.id) ?? job);
     response.headers.set('X-Job-Id', job.id);

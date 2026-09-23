@@ -16,6 +16,9 @@ import {
 import { DEFAULT_STEPS, ProgressTimeline, type ProgressEvent, type StepState } from '@/components/progress-timeline';
 import type { Capabilities } from '@/lib/api-types';
 import { formatBytes } from '@/lib/ui-format';
+import { cabecalhoDispositivo } from '@/lib/dispositivo';
+
+type CotaIa = { ia: boolean; limite?: number; restantes?: number; janelaHoras?: number; liberaEm?: string | null };
 
 type ErrorState = { code?: string; message: string; hint?: string } | null;
 
@@ -295,6 +298,7 @@ export function AnalyzeWorkspace({
       formData.append('file', file);
       const response = await fetch('/api/analyze', {
         method: 'POST',
+        headers: cabecalhoDispositivo(),
         body: formData,
         signal: controller.signal,
       });
@@ -347,7 +351,7 @@ export function AnalyzeWorkspace({
       try {
         const response = await fetch('/api/pncp/analisar', {
           method: 'POST',
-          headers: { 'content-type': 'application/json' },
+          headers: { 'content-type': 'application/json', ...cabecalhoDispositivo() },
           body: JSON.stringify(origem),
           signal: controller.signal,
         });
@@ -380,6 +384,20 @@ export function AnalyzeWorkspace({
 
   const running = phase === 'running';
   const aiOn = capabilities.ai.configured;
+
+  // Cota de análises com IA desta pessoa: recarrega ao abrir e ao voltar ao formulário.
+  const [cota, setCota] = useState<CotaIa | null>(null);
+  useEffect(() => {
+    if (!aiOn || phase !== 'idle') return;
+    let ativo = true;
+    fetch('/api/cota', { headers: cabecalhoDispositivo(), cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((dados: CotaIa | null) => ativo && setCota(dados))
+      .catch(() => undefined);
+    return () => {
+      ativo = false;
+    };
+  }, [aiOn, phase]);
 
   if (running || phase === 'error' || success) {
     return (
@@ -467,6 +485,17 @@ export function AnalyzeWorkspace({
             PDF com texto selecionável, até {capabilities.limits.maxUploadMb} MB e {capabilities.limits.maxPages}{' '}
             páginas.
           </p>
+          {cota?.ia && cota.limite ? (
+            <p className={`mt-1 text-xs font-medium ${cota.restantes ? 'text-ink-600' : 'text-warn-700'}`}>
+              {cota.restantes
+                ? `Você tem ${cota.restantes} de ${cota.limite} análises com IA disponíveis · a cota renova a cada ${Math.round((cota.janelaHoras ?? 72) / 24)} dias`
+                : `Suas ${cota.limite} análises com IA foram usadas${
+                    cota.liberaEm
+                      ? ` · a próxima libera em ${new Date(cota.liberaEm).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}`
+                      : ''
+                  }. O edital de demonstração continua liberado.`}
+            </p>
+          ) : null}
         </div>
         <span
           className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-medium ${

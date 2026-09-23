@@ -17,7 +17,7 @@ export const maxDuration = 300;
 export async function POST() {
   try {
     const { buffer, fileName } = getDemoPdf();
-    const { job, reused } = startAnalysis({
+    const { job, reused } = await startAnalysis({
       buffer,
       fileName,
       fileSize: buffer.byteLength,

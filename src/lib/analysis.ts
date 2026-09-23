@@ -20,7 +20,7 @@ import {
   REDUCE_INSTRUCTIONS,
   SYSTEM_PROMPT,
 } from './ai/prompts';
-import { normalizeAnalysis } from './ai/normalize';
+import { completarSecoesFinais, normalizeAnalysis } from './ai/normalize';
 import { analyzeLocally } from './ai/local';
 import { isAppError, toPublicError } from './errors';
 import { assertHasTextLayer, extractDocument } from './pdf/extract';
@@ -373,11 +373,13 @@ export async function runAnalysis(
       detail: 'Aplicando schema estrito e normalizando evidências rastreáveis.',
     });
 
-    const analise = normalizeAnalysis(rawAnalysis, {
-      dataAnalise,
-      paginas: document.totalPages,
-      caracteres: document.totalChars,
-    });
+    const analise = completarSecoesFinais(
+      normalizeAnalysis(rawAnalysis, {
+        dataAnalise,
+        paginas: document.totalPages,
+        caracteres: document.totalChars,
+      }),
+    );
 
     const totalEvidencias = countEvidence(analise);
     if (totalEvidencias < 6) {

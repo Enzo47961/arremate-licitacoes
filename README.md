@@ -282,11 +282,20 @@ Todas em `.env.example`, lidas **apenas no servidor**.
 
 A análise usa qualquer API no formato da OpenAI. A ordem de preferência é:
 
-1. **`GEMINI_API_KEY`**: camada gratuita do Google AI Studio, com janela de 1 milhão de tokens. O edital inteiro vai numa chamada só. É a opção recomendada para a demo pública. Se o modelo principal estiver sobrecarregado (503/429), a chamada passa automaticamente para os modelos de `GEMINI_MODELOS_RESERVA`.
-2. **`DEEPSEEK_API_KEY`**: pago e barato, com o documento dividido em blocos acima de 60 mil caracteres.
+1. **`DEEPSEEK_API_KEY`**: DeepSeek V4.1 Flash, com janela de 1 milhão de tokens. O edital inteiro vai numa chamada só (cerca de 45 s e US$ 0,02 por edital).
+2. **`GEMINI_API_KEY`**: camada gratuita do Google AI Studio, também com 1 milhão de tokens, mas sujeita a sobrecarga nos horários de pico. Um modelo sobrecarregado (503/429) passa para os de `GEMINI_MODELOS_RESERVA`.
 3. **Sem chave**: motor local de demonstração, sinalizado na tela.
 
-**Proteção contra abuso:** cada IP pode fazer 4 análises **novas** por hora e cada instância, 40 por dia (`AI_LIMITE_POR_IP_HORA`, `AI_LIMITE_DIARIO`). O mesmo PDF analisado de novo vem do cache e não gasta cota.
+Se a IA não responder dentro de `AI_ORCAMENTO_TOTAL_MS`, o relatório sai pelo motor local com um aviso, em vez de erro. Quando o modelo omite o checklist ou os próximos passos, eles são montados a partir dos documentos de habilitação e do cronograma já extraídos, com a página de origem.
+
+### Cota de análises com IA
+
+A demonstração é pública, então cada pessoa tem **3 análises novas a cada 3 dias** e a demo inteira tem um teto diário (`AI_LIMITE_POR_USUARIO`, `AI_JANELA_HORAS`, `AI_LIMITE_DIARIO`).
+
+- **Pessoa = IP ou navegador.** A contagem soma o que bater em qualquer um dos dois, então trocar só a rede ou só limpar o navegador não zera a cota.
+- **Persistente:** o registro fica no Supabase (`supabase/migrations/…_arremate_cota.sql`), num schema fora da API REST, acessível só por funções que exigem `ARREMATE_SEGREDO`. O banco recebe apenas hashes com sal (`ARREMATE_SAL_IP`), nunca o IP.
+- **Justo:** o mesmo PDF vem do cache e não gasta cota; análises que não chegaram a usar a IA (PDF inválido, provedor fora do ar) são estornadas.
+- **A tela mostra quantas restam** e quando a próxima libera. Sem banco configurado, cai para um contador em memória.
 
 > Por que não a Groq? A camada gratuita limita a **8 mil tokens por minuto**, e só a resposta de uma análise completa passa de 12 mil.
 
@@ -294,7 +303,7 @@ A análise usa qualquer API no formato da OpenAI. A ordem de preferência é:
 
 | Variável | Padrão | Descrição |
 | --- | --- | --- |
-| `DEEPSEEK_API_KEY` | *(vazio)* | Chave da API DeepSeek. **Sem ela, a aplicação roda no modo de demonstração local.** |
+| `DEEPSEEK_API_KEY` ou `GEMINI_API_KEY` | *(vazio)* | Chave do provedor de IA. **Sem nenhuma, a aplicação roda no modo de demonstração local.** |
 
 ### IA
 

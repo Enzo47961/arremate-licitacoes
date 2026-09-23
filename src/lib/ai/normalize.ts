@@ -492,3 +492,52 @@ export function normalizeAnalysis(
 
 /** Schema tolerante usado na validação prévia (permite campos extras). */
 export const looseAnaliseSchema = z.object({}).passthrough();
+
+/**
+ * O modelo às vezes encerra a resposta antes das seções finais. Checklist e
+ * próximos passos derivam do que já foi extraído (documentos de habilitação e
+ * cronograma), então são completados sem nova chamada — sempre com a fonte original.
+ */
+export function completarSecoesFinais(analise: AnaliseEditais): AnaliseEditais {
+  if (analise.checklist.length === 0) {
+    const p = analise.participacao;
+    const grupos: Array<[string, Array<{ text: string; source?: string | null }> | undefined]> = [
+      ['Habilitação jurídica', p.habilitacaoJuridica],
+      ['Regularidade fiscal e trabalhista', p.habilitacaoFiscalTrabalhista],
+      ['Certidões', p.certidoes],
+      ['Qualificação técnica', p.qualificacaoTecnica],
+      ['Qualificação econômico-financeira', p.qualificacaoEconomicoFinanceira],
+      ['Documentos', p.documentos],
+      ['Exigência específica', p.exigenciasEspecificas],
+    ];
+    const vistos = new Set<string>();
+    for (const [grupo, itens] of grupos) {
+      for (const item of itens ?? []) {
+        const chave = item.text.trim().toLowerCase();
+        if (!chave || vistos.has(chave) || analise.checklist.length >= 40) continue;
+        vistos.add(chave);
+        analise.checklist.push({ item: item.text, obrigatorio: true, observacao: grupo, source: item.source ?? null });
+      }
+    }
+  }
+
+  if (analise.conclusao.proximosPassos.length === 0) {
+    const achar = (re: RegExp) => analise.cronograma.find((e) => re.test(e.evento));
+    const quando = (e?: { data: string; hora?: string | null }) => (e ? ` até ${e.data}${e.hora ? ` às ${e.hora}` : ''}` : '');
+    const esclarecimento = achar(/esclarec|impugna/i);
+    // Prazo final para a proposta: encerramento/limite ou a sessão pública; nunca o início do recebimento.
+    const proposta =
+      achar(/(limite|encerramento|t[eé]rmino|fim).*(propost|recebimento)/i) ??
+      achar(/abertura|sess[aã]o|disputa/i) ??
+      [...analise.cronograma].reverse().find((e) => /propost/i.test(e.evento) && !/in[ií]cio/i.test(e.evento));
+    const passos = [
+      analise.checklist.length > 0 && { text: `Separar os ${analise.checklist.length} documentos do checklist e conferir a validade das certidões.`, source: null },
+      analise.pontosDeAtencao.length > 0 && { text: 'Revisar os pontos de atenção antes de decidir participar.', source: null },
+      esclarecimento && { text: `Enviar dúvidas ou impugnações${quando(esclarecimento)}.`, source: esclarecimento.source ?? null },
+      { text: `Cadastrar a proposta no portal${quando(proposta)}.`, source: proposta?.source ?? null },
+    ].filter(Boolean) as Array<{ text: string; source: string | null }>;
+    analise.conclusao.proximosPassos.push(...passos);
+  }
+
+  return analise;
+}

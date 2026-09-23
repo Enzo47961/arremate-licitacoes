@@ -4,7 +4,7 @@ import { config } from '@/lib/config';
 import { startAnalysis, validateUpload } from '@/lib/service';
 import { jobStreamResponse } from '@/lib/stream';
 import { getJob } from '@/lib/store';
-import { ipDaRequisicao } from '@/lib/limite';
+import { identidadeDaRequisicao } from '@/lib/limite';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -77,11 +77,11 @@ export async function POST(request: Request) {
     const buffer = Buffer.from(await file.arrayBuffer());
     validateUpload(file, buffer);
 
-    const { job, reused } = startAnalysis({
+    const { job, reused } = await startAnalysis({
       buffer,
       fileName: file.name,
       fileSize: buffer.byteLength,
-      ip: ipDaRequisicao(request),
+      quem: identidadeDaRequisicao(request),
     });
 
     const streamable = getJob(job.id) ?? job;

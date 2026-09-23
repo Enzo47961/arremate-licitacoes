@@ -87,9 +87,9 @@ const { buildChunks, buildPageIndex } = await load('chunking.js');
 
 let passed = 0;
 const failures = [];
-function check(name, fn) {
+async function check(name, fn) {
   try {
-    fn();
+    await fn();
     passed += 1;
     console.log(`  \u2713 ${name}`);
   } catch (error) {
@@ -104,7 +104,7 @@ console.log('\n\u2500\u2500 Verifica\u00e7\u00e3o das rotas de dados \u2500\u250
 console.log('\n[1] Ciclo de vida do job (store + service)');
 
 let job;
-check('cria job e publica o estado inicial esperado pela interface', () => {
+await check('cria job e publica o estado inicial esperado pela interface', () => {
   job = createJob({ fileName: 'edital-teste.pdf', fileSize: 50_000, isDemo: true });
   const publicJob = toPublicJob(job);
   assert.ok(publicJob.id, 'job sem id');
@@ -115,7 +115,7 @@ check('cria job e publica o estado inicial esperado pela interface', () => {
   assert.match(publicJob.fileSizeLabel, /KB/);
 });
 
-check('progresso \u00e9 monot\u00f4nico e limitado a 100', () => {
+await check('progresso \u00e9 monot\u00f4nico e limitado a 100', () => {
   updateJob(job.id, { stage: 'extracting', progress: 40, message: 'Extraindo' });
   updateJob(job.id, { stage: 'analyzing', progress: 20, message: 'Analisando' });
   const current = getJob(job.id);
@@ -124,14 +124,14 @@ check('progresso \u00e9 monot\u00f4nico e limitado a 100', () => {
   assert.equal(getJob(job.id).progress, 100, 'progresso deveria ser limitado a 100');
 });
 
-check('todas as etapas ficam conclu\u00eddas no fim do fluxo', () => {
+await check('todas as etapas ficam conclu\u00eddas no fim do fluxo', () => {
   const current = getJob(job.id);
   assert.equal(current.stage, 'done');
   assert.ok(current.steps.every((step) => step.status === 'done'));
   assert.ok(current.events.length >= 3, 'trilha de eventos incompleta');
 });
 
-check('job inexistente n\u00e3o quebra updateJob nem getAnalysis', () => {
+await check('job inexistente n\u00e3o quebra updateJob nem getAnalysis', () => {
   assert.equal(updateJob('id-inexistente', { stage: 'done' }), undefined);
   assert.equal(getAnalysis('id-inexistente'), undefined);
 });
@@ -144,11 +144,11 @@ const document_ = await extractDocument(demoPdf);
 assertHasTextLayer(document_);
 const analise = analyzeLocally(document_, { fileName, dataAnalise: new Date().toISOString() });
 
-check('an\u00e1lise do PDF de demonstra\u00e7\u00e3o passa no schema', () => {
+await check('an\u00e1lise do PDF de demonstra\u00e7\u00e3o passa no schema', () => {
   assert.doesNotThrow(() => analiseSchema.parse(analise));
 });
 
-check('job com resultado \u00e9 servido por getAnalysis (rota /analysis)', () => {
+await check('job com resultado \u00e9 servido por getAnalysis (rota /analysis)', () => {
   updateJob(job.id, { stage: 'done', progress: 100, result: { analise, meta: { engine: 'local-demo', avisos: [] } } });
   const found = getAnalysis(job.id);
   assert.ok(found, 'getAnalysis n\u00e3o encontrou o job');
@@ -156,7 +156,7 @@ check('job com resultado \u00e9 servido por getAnalysis (rota /analysis)', () =>
   assert.equal(found.job.result.meta.engine, 'local-demo');
 });
 
-check('relat\u00f3rio HTML \u00e9 gerado a partir do job (rota /report.html)', () => {
+await check('relat\u00f3rio HTML \u00e9 gerado a partir do job (rota /report.html)', () => {
   const found = getAnalysis(job.id);
   const html = renderReportHtml(found.analise, found.job.result.meta);
   assert.ok(html.startsWith('<!DOCTYPE html>'));
@@ -165,15 +165,15 @@ check('relat\u00f3rio HTML \u00e9 gerado a partir do job (rota /report.html)', (
   writeFileSync(join(ARTIFACTS, 'relatorio-verificado.html'), html, 'utf8');
 });
 
-check('nome do PDF de download \u00e9 seguro', () => {
+await check('nome do PDF de download \u00e9 seguro', () => {
   assert.match(reportFileName(analise), /^analise-edital-[a-z0-9-]+\.pdf$/);
 });
 
 /* -------------------------- Cache por hash -------------------------- */
 console.log('\n[3] Reaproveitamento de resultado (cache)');
 
-check('mesmo arquivo + mesmo motor reaproveita o job', () => {
-  const primeiro = startAnalysis({ buffer: demoPdf, fileName, fileSize: demoPdf.byteLength, isDemo: true });
+await check('mesmo arquivo + mesmo motor reaproveita o job', async () => {
+  const primeiro = await startAnalysis({ buffer: demoPdf, fileName, fileSize: demoPdf.byteLength, isDemo: true });
   assert.equal(primeiro.reused, false, 'primeira an\u00e1lise n\u00e3o deveria reaproveitar');
   // A an\u00e1lise roda em background; injetamos um resultado para simular a conclus\u00e3o.
   updateJob(primeiro.job.id, {
@@ -182,13 +182,13 @@ check('mesmo arquivo + mesmo motor reaproveita o job', () => {
     result: { analise, meta: { engine: 'local-demo', avisos: [] } },
   });
 
-  const segundo = startAnalysis({ buffer: demoPdf, fileName, fileSize: demoPdf.byteLength, isDemo: true });
+  const segundo = await startAnalysis({ buffer: demoPdf, fileName, fileSize: demoPdf.byteLength, isDemo: true });
   assert.equal(segundo.reused, true, 'segunda an\u00e1lise deveria reaproveitar o cache');
   assert.equal(segundo.job.id, primeiro.job.id);
 });
 
-check('reaproveitamento atualiza o selo de origem e o nome do arquivo', () => {
-  const upload = startAnalysis({
+await check('reaproveitamento atualiza o selo de origem e o nome do arquivo', async () => {
+  const upload = await startAnalysis({
     buffer: demoPdf,
     fileName: 'meu-edital.pdf',
     fileSize: demoPdf.byteLength,
@@ -199,7 +199,7 @@ check('reaproveitamento atualiza o selo de origem e o nome do arquivo', () => {
   assert.equal(upload.job.isDemo, false);
 });
 
-check('hash do arquivo \u00e9 est\u00e1vel e distingue conte\u00fados', () => {
+await check('hash do arquivo \u00e9 est\u00e1vel e distingue conte\u00fados', () => {
   const a = hashBuffer(demoPdf);
   const b = hashBuffer(demoPdf);
   const c = hashBuffer(Buffer.from('%PDF-1.4\ndiferente\n%%EOF', 'latin1'));
@@ -207,7 +207,7 @@ check('hash do arquivo \u00e9 est\u00e1vel e distingue conte\u00fados', () => {
   assert.notEqual(a, c);
 });
 
-check('payload do job n\u00e3o carrega a an\u00e1lise inteira (resposta leve do SSE)', () => {
+await check('payload do job n\u00e3o carrega a an\u00e1lise inteira (resposta leve do SSE)', () => {
   const publicJob = toPublicJob(getJob(job.id));
   assert.equal('result' in publicJob, false, 'toPublicJob n\u00e3o deve expor o resultado completo');
   assert.equal(publicJob.hasResult, true);
@@ -216,7 +216,7 @@ check('payload do job n\u00e3o carrega a an\u00e1lise inteira (resposta leve do 
 /* --------------------------- Or\u00e7amento --------------------------- */
 console.log('\n[4] Contratos auxiliares usados pelas rotas');
 
-check('\u00edndice de p\u00e1ginas e blocos s\u00e3o consistentes', () => {
+await check('\u00edndice de p\u00e1ginas e blocos s\u00e3o consistentes', () => {
   const index = buildPageIndex(document_);
   const chunks = buildChunks(document_);
   assert.equal(index.length, document_.totalPages);
@@ -236,7 +236,7 @@ const produced = await runAnalysis(demoPdf, freshJob.id, {
 });
 const finished = getJob(freshJob.id);
 
-check('o pipeline grava o resultado no job ao concluir', () => {
+await check('o pipeline grava o resultado no job ao concluir', () => {
   // Regress\u00e3o: sem essa grava\u00e7\u00e3o o stream SSE nunca emite `done` e a
   // interface fica esperando at\u00e9 o watchdog \u2014 uma an\u00e1lise bem-sucedida
   // aparecia como "tempo m\u00e1ximo excedido".
@@ -247,14 +247,14 @@ check('o pipeline grava o resultado no job ao concluir', () => {
   assert.deepEqual(finished.result, produced);
 });
 
-check('getAnalysis serve o resultado do pipeline real (rota /analysis)', () => {
+await check('getAnalysis serve o resultado do pipeline real (rota /analysis)', () => {
   const found = getAnalysis(freshJob.id);
   assert.ok(found, 'getAnalysis n\u00e3o encontrou o resultado rec\u00e9m-produzido');
   assert.equal(found.job.id, freshJob.id);
   assert.ok(found.analise.cronograma.length > 0);
 });
 
-check('toPublicJob anuncia hasResult para a interface', () => {
+await check('toPublicJob anuncia hasResult para a interface', () => {
   const publicJob = toPublicJob(finished);
   assert.equal(publicJob.hasResult, true);
   assert.equal(publicJob.engine, 'local-demo');

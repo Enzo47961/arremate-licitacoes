@@ -206,7 +206,7 @@ check('documento de teste cabe em uma \u00fanica chamada', () => {
 check('documento longo \u00e9 dividido por p\u00e1ginas, sem perder conte\u00fado', () => {
   const longDocument = {
     ...document_,
-    totalChars: 120_000,
+    totalChars: 500_000, // acima do limite de chamada única (400 mil)
     fullText: document_.fullText,
   };
   assert.equal(isDocumentLong(longDocument), true);

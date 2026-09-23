@@ -100,7 +100,7 @@ console.log(
 console.log(`Documento: ${(buffer.byteLength / 1024).toFixed(1)} KB\n`);
 
 const startedAt = Date.now();
-const { job } = startAnalysis({ buffer, fileName: 'edital-demo.pdf', fileSize: buffer.byteLength, isDemo: true });
+const { job } = await startAnalysis({ buffer, fileName: 'edital-demo.pdf', fileSize: buffer.byteLength, isDemo: true });
 
 let lastMessage = '';
 while (Date.now() - startedAt < 10 * 60 * 1000) {
