@@ -541,3 +541,36 @@ export function completarSecoesFinais(analise: AnaliseEditais): AnaliseEditais {
 
   return analise;
 }
+
+/**
+ * O modelo às vezes devolve seções inteiras vazias (participação, obrigações,
+ * cronograma) mesmo quando o edital as traz. Para cada lista vazia, usa o que o
+ * extrator determinístico encontrou no mesmo documento — sempre com página de
+ * origem. Devolve os nomes das seções completadas, para o aviso ao usuário.
+ */
+export function completarComExtratorLocal(ia: AnaliseEditais, local: AnaliseEditais): string[] {
+  const completadas: string[] = [];
+  const listas = <T extends Record<string, unknown>>(alvo: T, fonte: T, secao: string) => {
+    let mudou = false;
+    for (const [chave, valor] of Object.entries(fonte)) {
+      const atual = alvo[chave];
+      if (Array.isArray(valor) && valor.length > 0 && (!Array.isArray(atual) || atual.length === 0)) {
+        (alvo as Record<string, unknown>)[chave] = valor;
+        mudou = true;
+      }
+    }
+    if (mudou) completadas.push(secao);
+  };
+
+  listas(ia.participacao, local.participacao, 'participação');
+  listas(ia.obrigacoes, local.obrigacoes, 'obrigações');
+  if (ia.cronograma.length === 0 && local.cronograma.length > 0) {
+    ia.cronograma = local.cronograma;
+    completadas.push('cronograma');
+  }
+  if (ia.checklist.length === 0 && local.checklist.length > 0) {
+    ia.checklist = local.checklist;
+    completadas.push('checklist');
+  }
+  return completadas;
+}

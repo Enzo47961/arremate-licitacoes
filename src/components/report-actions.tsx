@@ -7,12 +7,10 @@ import { IconAlert, IconCheckCircle, IconDownload, IconPrint } from '@/component
 export function ReportActions({
   jobId,
   pdfAvailable,
-  pdfUnavailableReason,
   fileName,
 }: {
   jobId: string;
   pdfAvailable: boolean;
-  pdfUnavailableReason?: string | null;
   fileName: string;
 }) {
   const [state, setState] = useState<'idle' | 'loading' | 'error' | 'done'>('idle');
@@ -29,6 +27,12 @@ export function ReportActions({
   );
 
   const download = async () => {
+    // Sem gerador de PDF no servidor: abre a versão de impressão já com a janela
+    // "Salvar como PDF" aberta — o layout é o mesmo do arquivo gerado.
+    if (!pdfAvailable) {
+      window.open(`/api/jobs/${jobId}/report.html?imprimir=1`, '_blank', 'noopener');
+      return;
+    }
     setState('loading');
     setMessage(null);
     try {
@@ -88,13 +92,8 @@ export function ReportActions({
       </div>
 
       {!pdfAvailable ? (
-        <p className="mt-2 flex items-start gap-2 text-xs text-warn-700">
-          <IconAlert size={14} className="mt-0.5 shrink-0" />
-          <span>
-            {pdfUnavailableReason ?? 'Geração de PDF indisponível neste servidor.'} Use{' '}
-            <strong>“Abrir versão de impressão”</strong> e escolha “Salvar como PDF” — o layout é o mesmo do arquivo
-            gerado automaticamente.
-          </span>
+        <p className="mt-2 text-xs text-ink-500">
+          O PDF abre numa nova aba: escolha <strong>“Salvar como PDF”</strong> como impressora.
         </p>
       ) : null}
 

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getAnalysis } from '@/lib/store';
+import { obterAnalise } from '@/lib/persistencia';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -7,7 +7,7 @@ export const dynamic = 'force-dynamic';
 /** GET /api/jobs/:id/analysis — análise completa validada pelo schema. */
 export async function GET(_request: Request, context: { params: Promise<{ id: string }> }) {
   const { id } = await context.params;
-  const found = getAnalysis(id);
+  const found = await obterAnalise(id);
 
   if (!found) {
     return NextResponse.json(

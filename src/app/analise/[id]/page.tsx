@@ -7,7 +7,7 @@ import { ReportToc, type TocEntry } from '@/components/report-toc';
 import { ReportView } from '@/components/report-view';
 import { getCapabilities } from '@/lib/capabilities';
 import { reportFileName } from '@/lib/report/document';
-import { getAnalysis } from '@/lib/store';
+import { obterAnalise } from '@/lib/persistencia';
 import { formatBytes, formatDateTimeLabel, pluralize } from '@/lib/ui-format';
 
 export const dynamic = 'force-dynamic';
@@ -20,7 +20,7 @@ type PageProps = { params: Promise<{ id: string }> };
 
 export default async function AnalysisPage({ params }: PageProps) {
   const { id } = await params;
-  const found = getAnalysis(id);
+  const found = await obterAnalise(id);
   if (!found) notFound();
 
   const { job, analise } = found;
@@ -98,7 +98,6 @@ export default async function AnalysisPage({ params }: PageProps) {
             <ReportActions
               jobId={job.id}
               pdfAvailable={capabilities.report.pdfAvailable}
-              pdfUnavailableReason={capabilities.report.reason}
               fileName={reportFileName(analise)}
             />
             <Link
@@ -183,7 +182,7 @@ export default async function AnalysisPage({ params }: PageProps) {
             </dl>
             <p className="mt-3 flex items-start gap-2 border-t border-ink-100 pt-3 text-[11px] leading-relaxed text-ink-500">
               <IconClock size={12} className="mt-0.5 shrink-0" />
-              Resultado mantido em memória no servidor e descartado automaticamente após algumas horas.
+              Relatório disponível neste link por 30 dias. O PDF enviado não é guardado.
             </p>
           </div>
         </aside>

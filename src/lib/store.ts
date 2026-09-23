@@ -211,6 +211,17 @@ export function restartJob(id: string): Job | undefined {
   return job;
 }
 
+/** Coloca na memória desta instância um job concluído que veio do banco. */
+export function adoptJob(job: Job, hash?: string): Job {
+  const existente = store.jobs.get(job.id);
+  if (existente) return existente;
+  store.jobs.set(job.id, job);
+  store.order.push(job.id);
+  if (hash) store.byHash.set(hash, job.id);
+  evict();
+  return job;
+}
+
 export function getJob(id: string): Job | undefined {
   return store.jobs.get(id);
 }
@@ -238,6 +249,11 @@ export function findByHash(hash: string): Job | undefined {
 
 export function linkHash(hash: string, jobId: string): void {
   store.byHash.set(hash, jobId);
+}
+
+/** Desfaz o vínculo do cache (resultado que não deve ser reaproveitado). */
+export function unlinkHash(hash: string): void {
+  store.byHash.delete(hash);
 }
 
 /** Versão pública do job: omite a análise completa (payload grande). */

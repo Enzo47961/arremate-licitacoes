@@ -17,6 +17,7 @@
  * usar a IA (PDF inválido, provedor fora do ar) são estornadas.
  */
 import { createHash } from 'node:crypto';
+import { bancoConfigurado, rpc } from './banco';
 import { AppError } from './errors';
 
 const POR_USUARIO = Number(process.env.AI_LIMITE_POR_USUARIO ?? 3);
@@ -41,27 +42,6 @@ export function identidadeDaRequisicao(request: Request): Identidade {
 
 const hash = (valor: string) =>
   createHash('sha256').update(`${process.env.ARREMATE_SAL_IP ?? 'arremate'}:${valor}`).digest('hex').slice(0, 32);
-
-const bancoConfigurado = () =>
-  Boolean(process.env.SUPABASE_URL && process.env.SUPABASE_ANON_KEY && process.env.ARREMATE_SEGREDO);
-
-async function rpc<T>(funcao: string, parametros: Record<string, unknown>): Promise<T> {
-  const url = `${process.env.SUPABASE_URL!.replace(/\/+$/, '')}/rest/v1/rpc/${funcao}`;
-  const resposta = await fetch(url, {
-    method: 'POST',
-    headers: {
-      apikey: process.env.SUPABASE_ANON_KEY!,
-      Authorization: `Bearer ${process.env.SUPABASE_ANON_KEY}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ p_segredo: process.env.ARREMATE_SEGREDO, ...parametros }),
-    signal: AbortSignal.timeout(5_000),
-    cache: 'no-store',
-  });
-  const texto = await resposta.text();
-  if (!resposta.ok) throw new Error(`${funcao}: HTTP ${resposta.status} ${texto.slice(0, 200)}`);
-  return (texto ? JSON.parse(texto) : null) as T;
-}
 
 const dataHora = (iso: string) =>
   new Date(iso).toLocaleString('pt-BR', {

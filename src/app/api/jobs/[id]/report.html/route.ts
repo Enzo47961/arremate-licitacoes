@@ -1,6 +1,6 @@
 import { toPublicError } from '@/lib/errors';
 import { renderReportHtml } from '@/lib/report/document';
-import { getAnalysis } from '@/lib/store';
+import { obterAnalise } from '@/lib/persistencia';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -24,7 +24,7 @@ function errorPage(title: string, detail: string, status: number): Response {
 <body><div class="card">
   <h1>${title}</h1>
   <p>${detail}</p>
-  <p>Os resultados das análises ficam em memória no servidor por até 6 horas. Envie o edital novamente para gerar um
+  <p>Os relatórios ficam disponíveis por 30 dias. Envie o edital novamente para gerar um
      novo relatório.</p>
   <a href="/">Analisar um edital</a>
 </div></body></html>`,
@@ -44,19 +44,28 @@ function errorPage(title: string, detail: string, status: number): Response {
  */
 export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
   const { id } = await context.params;
-  const found = getAnalysis(id);
+  const found = await obterAnalise(id);
 
   if (!found) {
     return errorPage(
       'Análise não encontrada ou expirada',
-      'Este relatório não está mais disponível no servidor (o resultado é mantido em memória por tempo limitado).',
+      'Este relatório não está mais disponível (os relatórios ficam guardados por 30 dias).',
       404,
     );
   }
 
   try {
-    const download = new URL(request.url).searchParams.get('download') === '1';
-    const html = renderReportHtml(found.analise, found.job.result?.meta ?? { engine: 'local-demo', avisos: [] });
+    const params = new URL(request.url).searchParams;
+    const download = params.get('download') === '1';
+    let html = renderReportHtml(found.analise, found.job.result?.meta ?? { engine: 'local-demo', avisos: [] });
+    // ?imprimir=1 abre direto a janela de impressão ("Salvar como PDF"): é o caminho
+    // do botão de PDF quando o servidor não tem navegador headless (caso da Vercel).
+    if (params.get('imprimir') === '1') {
+      html = html.replace(
+        '</body>',
+        '<script>window.addEventListener("load",function(){setTimeout(function(){window.print()},400)})</script></body>',
+      );
+    }
     const fileName = `relatorio-editais-${found.job.id.slice(0, 8)}.html`;
 
     return new Response(html, {

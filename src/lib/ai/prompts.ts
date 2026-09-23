@@ -133,6 +133,10 @@ Onde EVID é exatamente:
 { "status": "found" | "inferred" | "not_found", "value": "texto ou null", "quote": "trecho literal curto ou null", "source": "Página N ou null", "reason": "obrigatório quando status = inferred, senão null" }`;
 
 /** Prompt do usuário para a análise direta (documento curto). */
+/** Data de hoje em Brasília: sem ela o modelo não consegue dizer quantos dias faltam. */
+const hojeBrasilia = () =>
+  new Date().toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', year: 'numeric' });
+
 export function buildDirectUserPrompt(input: {
   fileName: string;
   pages: number;
@@ -142,6 +146,7 @@ export function buildDirectUserPrompt(input: {
 
 ARQUIVO: ${input.fileName}
 PÁGINAS: ${input.pages}
+DATA DE HOJE: ${hojeBrasilia()} (horário de Brasília). Use-a para dizer quantos dias faltam para cada prazo e se ele já passou.
 
 ${FINAL_SCHEMA_INSTRUCTIONS}
 
@@ -306,6 +311,7 @@ export function buildReduceUserPrompt(input: {
   return `Consolide a análise do edital abaixo.
 
 ARQUIVO: ${input.fileName}
+DATA DE HOJE: ${hojeBrasilia()} (horário de Brasília). Use-a para dizer quantos dias faltam para cada prazo e se ele já passou.
 PÁGINAS: ${input.pages} · CARACTERES: ${input.totalChars} · BLOCOS ANALISADOS: ${input.chunkCount}
 
 ## ÍNDICE DE PÁGINAS (início de cada página)

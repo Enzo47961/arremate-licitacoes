@@ -210,6 +210,8 @@ export type AnalysisMeta = {
   duracaoMs?: number;
   avisos: string[];
   custoEstimadoUSD?: number;
+  /** Motivo técnico quando a IA falhou e o motor local assumiu (diagnóstico). */
+  falhaIa?: string;
 };
 
 export type AnalysisResult = {

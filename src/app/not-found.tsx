@@ -18,9 +18,8 @@ export default function NotFound() {
         <h1 className="mt-5 text-2xl font-semibold text-ink-900">Análise não encontrada ou expirada</h1>
 
         <p className="mt-3 text-[15px] leading-relaxed text-ink-600">
-          Os resultados das análises ficam disponíveis apenas em memória no servidor — por até 6 horas e limitados aos
-          40 documentos mais recentes. Documentos não são gravados em disco, então uma análise antiga não pode ser
-          recuperada.
+          Os relatórios ficam disponíveis por 30 dias. O PDF enviado não é guardado, só o resultado da análise. Se o
+          link é mais antigo que isso ou foi digitado errado, o relatório não pode ser recuperado.
         </p>
 
         <p className="mt-3 text-sm text-ink-500">

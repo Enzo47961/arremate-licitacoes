@@ -20,12 +20,13 @@ import {
   REDUCE_INSTRUCTIONS,
   SYSTEM_PROMPT,
 } from './ai/prompts';
-import { completarSecoesFinais, normalizeAnalysis } from './ai/normalize';
+import { completarComExtratorLocal, completarSecoesFinais, normalizeAnalysis } from './ai/normalize';
 import { analyzeLocally } from './ai/local';
 import { isAppError, toPublicError } from './errors';
 import { assertHasTextLayer, extractDocument } from './pdf/extract';
 import type { AnalysisResult } from './schema';
-import { updateJob, type JobStage } from './store';
+import { getJob, unlinkHash, updateJob, type JobStage } from './store';
+import { salvarJob } from './persistencia';
 
 export type ProgressReporter = (event: {
   stage: JobStage;
@@ -113,7 +114,7 @@ export async function runAnalysis(
   const useAI = hasAIProvider();
 
   /* ---------------- 2. Motor local (sem IA ou IA indisponível) ------------- */
-  const motorLocal = async (detail: string): Promise<AnalysisResult> => {
+  const motorLocal = async (detail: string, falhaIa?: string): Promise<AnalysisResult> => {
     report({
       stage: 'analyzing',
       progress: 42,
@@ -144,6 +145,7 @@ export async function runAnalysis(
       analise,
       meta: {
         engine: 'local-demo',
+        ...(falhaIa ? { falhaIa } : {}),
         chunks: 1,
         llmCalls: 0,
         tokensEstimados: estimateTokens(document.fullText),
@@ -153,7 +155,10 @@ export async function runAnalysis(
       },
     };
 
-    completeJob(jobId, result, 'Relatório pronto para visualização.');
+    // Motor local no lugar da IA que falhou: não entra no cache, senão o mesmo PDF
+    // continuaria recebendo a versão simplificada mesmo com a IA de volta.
+    if (falhaIa && options.hash) unlinkHash(options.hash);
+    await completeJob(jobId, result, 'Relatório pronto para visualização.', falhaIa ? undefined : options.hash);
     return result;
   };
 
@@ -373,13 +378,21 @@ export async function runAnalysis(
       detail: 'Aplicando schema estrito e normalizando evidências rastreáveis.',
     });
 
-    const analise = completarSecoesFinais(
-      normalizeAnalysis(rawAnalysis, {
-        dataAnalise,
-        paginas: document.totalPages,
-        caracteres: document.totalChars,
-      }),
+    const daIa = normalizeAnalysis(rawAnalysis, {
+      dataAnalise,
+      paginas: document.totalPages,
+      caracteres: document.totalChars,
+    });
+    const completadas = completarComExtratorLocal(
+      daIa,
+      analyzeLocally(document, { fileName: options.fileName, dataAnalise }),
     );
+    if (completadas.length > 0) {
+      avisos.push(
+        `A IA não preencheu ${completadas.join(', ')}; essas seções foram completadas pelo extrator automático, com a página de origem de cada item.`,
+      );
+    }
+    const analise = completarSecoesFinais(daIa);
 
     const totalEvidencias = countEvidence(analise);
     if (totalEvidencias < 6) {
@@ -410,10 +423,11 @@ export async function runAnalysis(
       },
     };
 
-    completeJob(
+    await completeJob(
       jobId,
       result,
       `${llmCalls} chamada(s) ao modelo · ${(promptTokens + completionTokens).toLocaleString('pt-BR')} tokens`,
+      options.hash,
     );
 
     return result;
@@ -422,8 +436,10 @@ export async function runAnalysis(
     // entrega o relatório do motor local e avisa que a leitura foi simplificada.
     if (!isAppError(error) || !['AI_FAILED', 'AI_INVALID_RESPONSE', 'ANALYSIS_TIMEOUT'].includes(error.code)) throw error;
     avisos.length = 0;
-    avisos.push('A IA estava indisponível no momento (alta demanda no provedor gratuito). Este relatório foi gerado pelo motor local, mais simples. Tente novamente em alguns minutos para a análise completa com IA.');
-    return motorLocal('IA indisponível agora — usando o analisador determinístico embutido.');
+    avisos.push('A IA não respondeu a tempo. Este relatório foi gerado pelo motor local, mais simples, e não gastou sua cota. Envie o edital de novo em alguns minutos para a análise completa com IA.');
+    const falha = `${error.code}: ${error.message}${error.details ? ` — ${error.details}` : ''}`.slice(0, 500);
+    console.error('[editais] IA falhou, motor local assumiu:', falha);
+    return motorLocal('IA indisponível agora — usando o analisador determinístico embutido.', falha);
   }
 }
 
@@ -459,7 +475,25 @@ export function countEvidence(analise: {
  * `/api/jobs/[id]/analysis` servir o relatório; sem ela o pipeline termina em
  * silêncio e a interface espera até o watchdog desistir.
  */
-export function completeJob(jobId: string, result: AnalysisResult, detail: string): void {
+export async function completeJob(jobId: string, result: AnalysisResult, detail: string, hash?: string): Promise<void> {
+  // Grava ANTES de anunciar "pronto": a interface redireciona para o relatório
+  // assim que recebe o evento, e essa página pode abrir em outra instância.
+  const job = getJob(jobId);
+  if (job) {
+    const agora = Date.now();
+    await salvarJob(
+      {
+        ...job,
+        stage: 'done',
+        progress: 100,
+        result,
+        updatedAt: agora,
+        steps: job.steps.map((step) => ({ ...step, status: 'done' as const })),
+        events: [...job.events, { stage: 'done', progress: 100, message: 'Análise concluída', detail, at: agora }],
+      },
+      hash,
+    );
+  }
   updateJob(jobId, {
     stage: 'done',
     progress: 100,

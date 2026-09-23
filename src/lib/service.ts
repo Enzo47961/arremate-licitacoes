@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
-import { createJob, findByHash, linkHash, refreshJobPresentation, type Job } from './store';
+import { createJob, linkHash, refreshJobPresentation, type Job } from './store';
+import { obterPorHash } from './persistencia';
 import { failJob, runAnalysis } from './analysis';
 import { AppError } from './errors';
 import { config, hasAIProvider } from './config';
@@ -38,8 +39,11 @@ export const hashBuffer = (buffer: Buffer): string =>
  * Sem o motor/modelo na chave, um resultado antigo continuaria sendo servido
  * depois de trocar o modelo ou de configurar a chave de IA.
  */
+/** Suba quando o prompt ou a normalização mudarem: invalida o cache antigo. */
+const VERSAO_ANALISE = 'v3';
+
 function cacheKey(buffer: Buffer): string {
-  const engine = hasAIProvider() ? `ai:${config.ai.model}:${config.ai.synthesisModel}` : 'local';
+  const engine = hasAIProvider() ? `ai:${config.ai.model}:${config.ai.synthesisModel}:${VERSAO_ANALISE}` : 'local';
   return `${hashBuffer(buffer)}|${engine}`;
 }
 
@@ -66,7 +70,7 @@ export async function startAnalysis(input: StartAnalysisInput): Promise<StartedA
 
   // Reaproveita o resultado quando o MESMO arquivo já foi analisado com o mesmo
   // motor — evita gastar tokens em demonstrações repetidas.
-  const existing = findByHash(key);
+  const existing = await obterPorHash(key);
   if (existing?.result) {
     refreshJobPresentation(existing.id, {
       fileName: input.fileName,

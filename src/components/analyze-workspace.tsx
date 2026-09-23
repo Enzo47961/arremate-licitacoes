@@ -659,8 +659,8 @@ export function AnalyzeWorkspace({
       </div>
 
       <p className="mt-4 text-xs leading-relaxed text-ink-500">
-        O documento é processado no servidor e não é publicado. O resultado fica disponível apenas nesta sessão do
-        servidor e é descartado automaticamente.
+        O PDF é processado no servidor e não é guardado nem publicado. O relatório fica disponível pelo link por 30
+        dias.
       </p>
     </div>
   );

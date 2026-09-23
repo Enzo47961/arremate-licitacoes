@@ -37,7 +37,8 @@ export async function POST(request: Request) {
     }
 
     const buffer = await baixarPdf(arquivo.url);
-    const fileName = /\.pdf$/i.test(arquivo.titulo) ? arquivo.titulo : `${arquivo.titulo}.pdf`;
+    // O PNCP às vezes publica o título já com ".pdf" (ou repetido): normaliza para uma extensão só.
+    const fileName = `${arquivo.titulo.trim().replace(/(\.pdf\s*)+$/i, '').trim() || 'edital'}.pdf`;
     const { job, reused } = await startAnalysis({
       buffer,
       fileName,

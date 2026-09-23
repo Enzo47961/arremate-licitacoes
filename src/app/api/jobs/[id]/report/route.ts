@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { toPublicError } from '@/lib/errors';
 import { browserStatus, htmlToPdf } from '@/lib/report/browser';
 import { renderReportHtml, reportFileName } from '@/lib/report/document';
-import { getAnalysis } from '@/lib/store';
+import { obterAnalise } from '@/lib/persistencia';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -11,7 +11,7 @@ export const maxDuration = 180;
 /** GET /api/jobs/:id/report.pdf — relatório profissional em PDF (A4). */
 export async function GET(_request: Request, context: { params: Promise<{ id: string }> }) {
   const { id } = await context.params;
-  const found = getAnalysis(id);
+  const found = await obterAnalise(id);
 
   if (!found) {
     return NextResponse.json(
