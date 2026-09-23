@@ -79,6 +79,8 @@ export async function createJsonCompletion(options: {
   temperature?: number;
   /** Rótulo usado em logs e mensagens de erro. */
   label?: string;
+  /** Instante (epoch ms) a partir do qual não se tenta mais: protege o limite de execução do servidor. */
+  prazo?: number;
 }): Promise<CompletionResult> {
   const apiKey = config.ai.apiKey;
   if (!apiKey) {
@@ -103,8 +105,15 @@ export async function createJsonCompletion(options: {
   const wasted = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
 
   for (;;) {
+    const restante = options.prazo ? options.prazo - Date.now() : Number.POSITIVE_INFINITY;
+    if (restante < 5_000) {
+      throw new AppError('ANALYSIS_TIMEOUT', ERROR_MESSAGES.ANALYSIS_TIMEOUT, {
+        status: 504,
+        details: `Prazo total da IA esgotado em "${options.label ?? model}".`,
+      });
+    }
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), config.ai.timeoutMs);
+    const timer = setTimeout(() => controller.abort(), Math.min(config.ai.timeoutMs, restante));
     const startedAt = Date.now();
 
     try {
@@ -236,7 +245,8 @@ export async function createJsonCompletion(options: {
       lastError = error;
       const aborted = error instanceof Error && error.name === 'AbortError';
       if (aborted) {
-        if (errorRetries < config.ai.maxRetries) {
+        const prazoEsgotado = options.prazo !== undefined && Date.now() >= options.prazo - 5_000;
+        if (!prazoEsgotado && errorRetries < config.ai.maxRetries) {
           errorRetries += 1;
           await sleep(1000 * 2 ** (errorRetries - 1));
           continue;

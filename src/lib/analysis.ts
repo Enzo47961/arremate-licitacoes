@@ -159,6 +159,8 @@ export async function runAnalysis(
 
   if (!useAI) return motorLocal('Nenhuma chave de IA configurada — usando o analisador determinístico embutido.');
 
+  const prazoIa = startedAt + config.ai.totalBudgetMs;
+
   try {
     /* -------------------- 3. Análise com IA (LLM) --------------------- */
     const chunks = buildChunks(document);
@@ -201,6 +203,7 @@ export async function runAnalysis(
         detail: `Modelo ${config.ai.model} · documento completo em uma única leitura`,
       });
       const completion = await createJsonCompletion({
+        prazo: prazoIa,
         messages: [
           { role: 'system', content: SYSTEM_PROMPT },
           {
@@ -250,6 +253,7 @@ export async function runAnalysis(
 
         try {
           const completion = await createJsonCompletion({
+            prazo: prazoIa,
             messages: [
               { role: 'system', content: SYSTEM_PROMPT },
               {
@@ -326,6 +330,7 @@ export async function runAnalysis(
       }
 
       const reduceCompletion = await createJsonCompletion({
+        prazo: prazoIa,
         messages: [
           { role: 'system', content: SYSTEM_PROMPT },
           {

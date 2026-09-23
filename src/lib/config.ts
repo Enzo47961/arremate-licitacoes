@@ -62,6 +62,11 @@ export const config = {
     synthesisModel: env.DEEPSEEK_SYNTHESIS_MODEL?.trim() || provedor.model,
     timeoutMs: num(env.AI_TIMEOUT_MS, 180_000),
     maxRetries: num(env.AI_MAX_RETRIES, 2),
+    /**
+     * Tempo total que a IA tem para concluir uma análise. Acima disso o relatório
+     * sai pelo motor local. Fica abaixo do limite de 300 s da função na Vercel.
+     */
+    totalBudgetMs: num(env.AI_ORCAMENTO_TOTAL_MS, 210_000),
     temperature: Number.isFinite(Number(env.AI_TEMPERATURE)) ? Number(env.AI_TEMPERATURE) : 0,
     /**
      * Orçamento de saída das respostas do modelo. O schema completo de uma
