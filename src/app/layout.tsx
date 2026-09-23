@@ -3,12 +3,12 @@ import './globals.css';
 
 export const metadata: Metadata = {
   title: {
-    default: 'Arremate · Inteligência em licitações',
-    template: '%s · Arremate',
+    default: 'LicitaFlow · Inteligência em licitações',
+    template: '%s · LicitaFlow',
   },
   description:
     'Plataforma de licitações: radar de editais do PNCP com nota de aderência, preços vencedores de licitações anteriores, pipeline de disputas, cofre de certidões e análise de edital com IA.',
-  applicationName: 'Arremate',
+  applicationName: 'LicitaFlow',
   keywords: [
     'licitação',
     'edital',
@@ -22,7 +22,7 @@ export const metadata: Metadata = {
   ],
   robots: { index: false, follow: false },
   openGraph: {
-    title: 'Arremate · Inteligência em licitações',
+    title: 'LicitaFlow · Inteligência em licitações',
     description:
       'Encontre editais aderentes no PNCP, descubra quanto os concorrentes ofertaram e organize documentos e prazos em um só lugar.',
     type: 'website',

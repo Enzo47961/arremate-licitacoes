@@ -60,7 +60,7 @@ export default async function AnalysisPage({ params }: PageProps) {
       <header className="sticky top-0 z-40 border-b border-ink-200/70 glass no-print">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-5 py-3">
           <div className="flex min-w-0 items-center gap-3">
-            <Link href="/" className="flex items-center gap-3" aria-label="Voltar ao painel do Arremate">
+            <Link href="/" className="flex items-center gap-3" aria-label="Voltar ao painel do LicitaFlow">
               <span className="flex size-9 items-center justify-center rounded-xl bg-linear-to-br from-brand-400 to-brand-700 text-white shadow-soft">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                   <path d="M5 19 12 5l7 14" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />

@@ -1,10 +1,10 @@
-# Arremate · Inteligência em licitações
+# LicitaFlow · Inteligência em licitações
 
 ![Next.js](https://img.shields.io/badge/Next.js_15-000?logo=nextdotjs) ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=fff) ![Tailwind](https://img.shields.io/badge/Tailwind_v4-06B6D4?logo=tailwindcss&logoColor=fff) ![PNCP](https://img.shields.io/badge/dados-PNCP_ao_vivo-1f6feb) ![Vercel](https://img.shields.io/badge/deploy-Vercel-000?logo=vercel)
 
 **🔗 Demo ao vivo: [automation-bidding.vercel.app](https://automation-bidding.vercel.app)** · sem cadastro, os dados ficam no seu navegador.
 
-![Painel do Arremate](docs/painel.png)
+![Painel do LicitaFlow](docs/painel.png)
 
 | Radar de editais (PNCP ao vivo) | Pipeline de licitações |
 | --- | --- |

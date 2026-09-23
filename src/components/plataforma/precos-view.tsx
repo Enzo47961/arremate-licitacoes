@@ -167,7 +167,7 @@ export function PrecosView() {
 
       {estado.fase === 'ocioso' ? (
         <Vazio icone={<IconChart size={24} />} titulo="Pesquise um item para ver os preços vencedores">
-          O Arremate lê licitações encerradas no PNCP, encontra itens com a mesma descrição e mostra quem venceu, por quanto
+          O LicitaFlow lê licitações encerradas no PNCP, encontra itens com a mesma descrição e mostra quem venceu, por quanto
           e com que desconto sobre o valor estimado.
         </Vazio>
       ) : null}

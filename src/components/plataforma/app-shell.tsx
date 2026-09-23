@@ -67,7 +67,7 @@ export function Marca({ compacta = false }: { compacta?: boolean }) {
       </span>
       {compacta ? null : (
         <span className="leading-tight">
-          <span className="block text-[15px] font-semibold tracking-tight text-white">Arremate</span>
+          <span className="block text-[15px] font-semibold tracking-tight text-white">LicitaFlow</span>
           <span className="block text-[11px] text-ink-400">Inteligência em licitações</span>
         </span>
       )}
