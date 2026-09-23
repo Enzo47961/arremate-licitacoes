@@ -282,7 +282,7 @@ Todas em `.env.example`, lidas **apenas no servidor**.
 
 A análise usa qualquer API no formato da OpenAI. A ordem de preferência é:
 
-1. **`GEMINI_API_KEY`**: camada gratuita do Google AI Studio, com janela de 1 milhão de tokens. O edital inteiro vai numa chamada só. É a opção recomendada para a demo pública.
+1. **`GEMINI_API_KEY`**: camada gratuita do Google AI Studio, com janela de 1 milhão de tokens. O edital inteiro vai numa chamada só. É a opção recomendada para a demo pública. Se o modelo principal estiver sobrecarregado (503/429), a chamada passa automaticamente para os modelos de `GEMINI_MODELOS_RESERVA`.
 2. **`DEEPSEEK_API_KEY`**: pago e barato, com o documento dividido em blocos acima de 60 mil caracteres.
 3. **Sem chave**: motor local de demonstração, sinalizado na tela.
 

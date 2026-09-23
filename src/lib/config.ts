@@ -32,7 +32,9 @@ const provedor = env.GEMINI_API_KEY?.trim()
       nome: 'gemini' as const,
       apiKey: env.GEMINI_API_KEY.trim(),
       baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
-      model: env.GEMINI_MODEL?.trim() || 'gemini-2.5-flash',
+      model: env.GEMINI_MODEL?.trim() || 'gemini-3.6-flash',
+      /** Modelos tentados, em ordem, quando o principal está sobrecarregado (503/429). */
+      reservas: (env.GEMINI_MODELOS_RESERVA?.trim() || 'gemini-3.5-flash,gemini-3.5-flash-lite,gemini-3.1-flash-lite').split(',').map((m) => m.trim()).filter(Boolean),
       contexto: 1_000_000,
       precoEntrada: 0,
       precoSaida: 0,
@@ -42,6 +44,7 @@ const provedor = env.GEMINI_API_KEY?.trim()
       apiKey: env.DEEPSEEK_API_KEY?.trim() ?? '',
       baseUrl: (env.DEEPSEEK_BASE_URL?.trim() || 'https://api.deepseek.com').replace(/\/+$/, ''),
       model: env.DEEPSEEK_MODEL?.trim() || 'deepseek-chat',
+      reservas: [] as string[],
       contexto: 64_000,
       precoEntrada: 0.27,
       precoSaida: 1.1,
@@ -54,6 +57,7 @@ export const config = {
     apiKey: provedor.apiKey,
     baseUrl: provedor.baseUrl,
     model: provedor.model,
+    fallbackModels: provedor.reservas,
     /** Modelo usado na etapa de síntese final (documentos longos). */
     synthesisModel: env.DEEPSEEK_SYNTHESIS_MODEL?.trim() || provedor.model,
     timeoutMs: num(env.AI_TIMEOUT_MS, 180_000),

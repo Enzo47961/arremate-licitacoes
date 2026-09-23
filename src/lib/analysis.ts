@@ -22,7 +22,7 @@ import {
 } from './ai/prompts';
 import { normalizeAnalysis } from './ai/normalize';
 import { analyzeLocally } from './ai/local';
-import { toPublicError } from './errors';
+import { isAppError, toPublicError } from './errors';
 import { assertHasTextLayer, extractDocument } from './pdf/extract';
 import type { AnalysisResult } from './schema';
 import { updateJob, type JobStage } from './store';
@@ -112,13 +112,13 @@ export async function runAnalysis(
 
   const useAI = hasAIProvider();
 
-  /* ---------------- 2. Motor local (sem IA configurada) ------------- */
-  if (!useAI) {
+  /* ---------------- 2. Motor local (sem IA ou IA indisponível) ------------- */
+  const motorLocal = async (detail: string): Promise<AnalysisResult> => {
     report({
       stage: 'analyzing',
       progress: 42,
       message: 'Aplicando motor local de extração',
-      detail: 'DEEPSEEK_API_KEY não configurada — usando o analisador determinístico embutido.',
+      detail,
     });
     await sleep(500);
 
@@ -155,258 +155,269 @@ export async function runAnalysis(
 
     completeJob(jobId, result, 'Relatório pronto para visualização.');
     return result;
-  }
-
-  /* -------------------- 3. Análise com IA (LLM) --------------------- */
-  const chunks = buildChunks(document);
-  const long = isDocumentLong(document);
-
-  // Se o documento excedeu MAX_CHUNKS, o excedente foi descartado: isso precisa
-  // aparecer de forma explícita, porque o relatório não representaria o edital
-  // por inteiro.
-  const truncation = chunks.find((chunk) => chunk.truncated)?.truncated;
-  if (truncation) {
-    avisos.push(
-      `ATENÇÃO: o documento excedeu o limite de ${config.chunking.maxChunks} blocos e ${truncation.paginasDescartadas.length} página(s) (a partir da página ${Math.min(...truncation.paginasDescartadas)}) NÃO foram analisadas. Aumente MAX_CHUNKS no .env para ler o documento integralmente.`,
-    );
-  }
-
-  avisos.push(
-    long
-      ? `Documento extenso (${document.totalChars.toLocaleString('pt-BR')} caracteres): análise em ${chunks.length} blocos de páginas + síntese final.`
-      : 'Documento dentro do limite de uma única chamada: análise direta, sem fragmentação.',
-  );
-
-  let promptTokens = 0;
-  let completionTokens = 0;
-  let llmCalls = 0;
-  let modelUsed = config.ai.model;
-
-  const track = (usage?: { promptTokens: number; completionTokens: number }) => {
-    if (!usage) return;
-    promptTokens += usage.promptTokens;
-    completionTokens += usage.completionTokens;
   };
 
-  let rawAnalysis: unknown;
+  if (!useAI) return motorLocal('Nenhuma chave de IA configurada — usando o analisador determinístico embutido.');
 
-  if (!long) {
-    report({
-      stage: 'analyzing',
-      progress: 40,
-      message: 'Analisando edital com IA',
-      detail: `Modelo ${config.ai.model} · documento completo em uma única leitura`,
-    });
-    const completion = await createJsonCompletion({
-      messages: [
-        { role: 'system', content: SYSTEM_PROMPT },
-        {
-          role: 'user',
-          content: buildDirectUserPrompt({
-            fileName: options.fileName,
-            pages: document.totalPages,
-            fullText: document.fullText,
-          }),
-        },
-      ],
-      label: 'análise direta',
-    });
-    llmCalls += 1;
-    modelUsed = completion.model;
-    track(completion.usage);
+  try {
+    /* -------------------- 3. Análise com IA (LLM) --------------------- */
+    const chunks = buildChunks(document);
+    const long = isDocumentLong(document);
 
-    const parsed = parseModelJson(completion.content, {
-      truncated: completion.truncated,
-      label: 'análise direta',
-    });
-    if (parsed.repaired) {
+    // Se o documento excedeu MAX_CHUNKS, o excedente foi descartado: isso precisa
+    // aparecer de forma explícita, porque o relatório não representaria o edital
+    // por inteiro.
+    const truncation = chunks.find((chunk) => chunk.truncated)?.truncated;
+    if (truncation) {
       avisos.push(
-        'A resposta do modelo foi cortada no limite de tokens de saída e recuperada parcialmente. As últimas seções do relatório (ex.: valores, pontos de atenção e checklist) podem estar incompletas — confira o edital original.',
+        `ATENÇÃO: o documento excedeu o limite de ${config.chunking.maxChunks} blocos e ${truncation.paginasDescartadas.length} página(s) (a partir da página ${Math.min(...truncation.paginasDescartadas)}) NÃO foram analisadas. Aumente MAX_CHUNKS no .env para ler o documento integralmente.`,
       );
     }
-    rawAnalysis = parsed.data;
-  } else {
-    report({
-      stage: 'analyzing',
-      progress: 32,
-      message: `Analisando edital em ${chunks.length} blocos`,
-      detail: 'Leitura sequencial por páginas, preservando a referência de origem.',
-    });
 
-    let completed = 0;
-    const prazoFinal = config.ai.maxAnalysisMs > 0 ? startedAt + config.ai.maxAnalysisMs : Number.POSITIVE_INFINITY;
+    avisos.push(
+      long
+        ? `Documento extenso (${document.totalChars.toLocaleString('pt-BR')} caracteres): análise em ${chunks.length} blocos de páginas + síntese final.`
+        : 'Documento dentro do limite de uma única chamada: análise direta, sem fragmentação.',
+    );
 
-    const partials = await mapWithConcurrency(chunks, config.chunking.concurrency, async (chunk) => {
-      // Teto de tempo global: interrompe antes de acumular horas de tentativas.
-      if (Date.now() > prazoFinal) {
+    let promptTokens = 0;
+    let completionTokens = 0;
+    let llmCalls = 0;
+    let modelUsed = config.ai.model;
+
+    const track = (usage?: { promptTokens: number; completionTokens: number }) => {
+      if (!usage) return;
+      promptTokens += usage.promptTokens;
+      completionTokens += usage.completionTokens;
+    };
+
+    let rawAnalysis: unknown;
+
+    if (!long) {
+      report({
+        stage: 'analyzing',
+        progress: 40,
+        message: 'Analisando edital com IA',
+        detail: `Modelo ${config.ai.model} · documento completo em uma única leitura`,
+      });
+      const completion = await createJsonCompletion({
+        messages: [
+          { role: 'system', content: SYSTEM_PROMPT },
+          {
+            role: 'user',
+            content: buildDirectUserPrompt({
+              fileName: options.fileName,
+              pages: document.totalPages,
+              fullText: document.fullText,
+            }),
+          },
+        ],
+        label: 'análise direta',
+      });
+      llmCalls += 1;
+      modelUsed = completion.model;
+      track(completion.usage);
+
+      const parsed = parseModelJson(completion.content, {
+        truncated: completion.truncated,
+        label: 'análise direta',
+      });
+      if (parsed.repaired) {
         avisos.push(
-          `O limite de tempo da análise (${Math.round(config.ai.maxAnalysisMs / 60000)} min) foi atingido antes do bloco ${chunk.label}. Aumente AI_MAX_ANALYSIS_MS ou reduza o documento.`,
+          'A resposta do modelo foi cortada no limite de tokens de saída e recuperada parcialmente. As últimas seções do relatório (ex.: valores, pontos de atenção e checklist) podem estar incompletas — confira o edital original.',
         );
-        return { label: chunk.label, pages: chunk.pages, data: { erro: 'bloco não processado (tempo esgotado)' } };
       }
+      rawAnalysis = parsed.data;
+    } else {
+      report({
+        stage: 'analyzing',
+        progress: 32,
+        message: `Analisando edital em ${chunks.length} blocos`,
+        detail: 'Leitura sequencial por páginas, preservando a referência de origem.',
+      });
 
-      try {
-        const completion = await createJsonCompletion({
-          messages: [
-            { role: 'system', content: SYSTEM_PROMPT },
-            {
-              role: 'user',
-              content: buildMapUserPrompt({
-                fileName: options.fileName,
-                chunk,
-                totalChunks: chunks.length,
-              }),
-            },
-          ],
-          label: `bloco ${chunk.index + 1}`,
-        });
-        llmCalls += 1;
-        modelUsed = completion.model;
-        track(completion.usage);
+      let completed = 0;
+      const prazoFinal = config.ai.maxAnalysisMs > 0 ? startedAt + config.ai.maxAnalysisMs : Number.POSITIVE_INFINITY;
 
-        let data: unknown;
+      const partials = await mapWithConcurrency(chunks, config.chunking.concurrency, async (chunk) => {
+        // Teto de tempo global: interrompe antes de acumular horas de tentativas.
+        if (Date.now() > prazoFinal) {
+          avisos.push(
+            `O limite de tempo da análise (${Math.round(config.ai.maxAnalysisMs / 60000)} min) foi atingido antes do bloco ${chunk.label}. Aumente AI_MAX_ANALYSIS_MS ou reduza o documento.`,
+          );
+          return { label: chunk.label, pages: chunk.pages, data: { erro: 'bloco não processado (tempo esgotado)' } };
+        }
+
         try {
-          const parsed = parseModelJson(completion.content, {
-            truncated: completion.truncated,
+          const completion = await createJsonCompletion({
+            messages: [
+              { role: 'system', content: SYSTEM_PROMPT },
+              {
+                role: 'user',
+                content: buildMapUserPrompt({
+                  fileName: options.fileName,
+                  chunk,
+                  totalChunks: chunks.length,
+                }),
+              },
+            ],
             label: `bloco ${chunk.index + 1}`,
           });
-          data = parsed.data;
-          if (parsed.repaired) {
-            avisos.push(
-              `O bloco ${chunk.label} foi cortado no limite de tokens de saída e recuperado parcialmente.`,
-            );
-          }
-        } catch {
-          data = { erro: 'bloco não pôde ser interpretado', label: chunk.label };
-          avisos.push(`O bloco ${chunk.label} não retornou JSON válido e foi ignorado na síntese.`);
-        }
-        return { label: chunk.label, pages: chunk.pages, data };
-      } catch (error) {
-        // Degradação graciosa: um bloco com falha (rate limit persistente, erro
-        // do provedor) não pode descartar os outros 39 já extraídos e pagos.
-        const mensagem = error instanceof Error ? error.message : String(error);
-        avisos.push(
-          `O bloco ${chunk.label} falhou após as tentativas automáticas (${mensagem.slice(0, 120)}). O conteúdo dessas páginas não entrou na síntese e deve ser conferido manualmente.`,
-        );
-        return { label: chunk.label, pages: chunk.pages, data: { erro: 'falha ao processar o bloco' } };
-      } finally {
-        completed += 1;
-        report({
-          stage: 'analyzing',
-          progress: 32 + (completed / chunks.length) * 38,
-          message: `Bloco ${completed} de ${chunks.length} processado`,
-          detail: `${chunk.label} · ${chunk.chars.toLocaleString('pt-BR')} caracteres`,
-        });
-      }
-    });
+          llmCalls += 1;
+          modelUsed = completion.model;
+          track(completion.usage);
 
+          let data: unknown;
+          try {
+            const parsed = parseModelJson(completion.content, {
+              truncated: completion.truncated,
+              label: `bloco ${chunk.index + 1}`,
+            });
+            data = parsed.data;
+            if (parsed.repaired) {
+              avisos.push(
+                `O bloco ${chunk.label} foi cortado no limite de tokens de saída e recuperado parcialmente.`,
+              );
+            }
+          } catch {
+            data = { erro: 'bloco não pôde ser interpretado', label: chunk.label };
+            avisos.push(`O bloco ${chunk.label} não retornou JSON válido e foi ignorado na síntese.`);
+          }
+          return { label: chunk.label, pages: chunk.pages, data };
+        } catch (error) {
+          // Degradação graciosa: um bloco com falha (rate limit persistente, erro
+          // do provedor) não pode descartar os outros 39 já extraídos e pagos.
+          const mensagem = error instanceof Error ? error.message : String(error);
+          avisos.push(
+            `O bloco ${chunk.label} falhou após as tentativas automáticas (${mensagem.slice(0, 120)}). O conteúdo dessas páginas não entrou na síntese e deve ser conferido manualmente.`,
+          );
+          return { label: chunk.label, pages: chunk.pages, data: { erro: 'falha ao processar o bloco' } };
+        } finally {
+          completed += 1;
+          report({
+            stage: 'analyzing',
+            progress: 32 + (completed / chunks.length) * 38,
+            message: `Bloco ${completed} de ${chunks.length} processado`,
+            detail: `${chunk.label} · ${chunk.chars.toLocaleString('pt-BR')} caracteres`,
+          });
+        }
+      });
+
+      report({
+        stage: 'structuring',
+        progress: 74,
+        message: 'Consolidando blocos (síntese final)',
+        detail: 'Unificando dados repetidos, resolvendo conflitos e montando o documento final.',
+      });
+
+      const index = buildPageIndex(document);
+      const fixedChars = FINAL_SCHEMA_INSTRUCTIONS.length + REDUCE_INSTRUCTIONS.length + 1_200;
+      const budget = computeReduceBudget({
+        partials: partials.length,
+        pageIndexChars: index.reduce((acc, entry) => acc + entry.preview.length + 24, 0),
+        fixedChars,
+        contextTokens: config.ai.contextWindowTokens,
+        budgetRatio: config.ai.promptBudgetRatio,
+      });
+      if (!budget.fits) {
+        avisos.push(
+          `A síntese final precisou comprimir as extrações parciais para caber na janela de contexto do modelo (${config.ai.contextWindowTokens.toLocaleString('pt-BR')} tokens). Revise o relatório com atenção redobrada.`,
+        );
+      }
+
+      const reduceCompletion = await createJsonCompletion({
+        messages: [
+          { role: 'system', content: SYSTEM_PROMPT },
+          {
+            role: 'user',
+            content: buildReduceUserPrompt({
+              fileName: options.fileName,
+              pages: document.totalPages,
+              totalChars: document.totalChars,
+              chunkCount: chunks.length,
+              pageIndex: index,
+              partials,
+              budget,
+            }),
+          },
+        ],
+        model: config.ai.synthesisModel,
+        label: 'síntese final',
+      });
+      llmCalls += 1;
+      modelUsed = reduceCompletion.model;
+      track(reduceCompletion.usage);
+
+      const parsedReduce = parseModelJson(reduceCompletion.content, {
+        truncated: reduceCompletion.truncated,
+        label: 'síntese final',
+      });
+      if (parsedReduce.repaired) {
+        avisos.push(
+          'A síntese final foi cortada no limite de tokens de saída e recuperada parcialmente. As últimas seções do relatório podem estar incompletas — confira o edital original.',
+        );
+      }
+      rawAnalysis = parsedReduce.data;
+    }
+
+    /* ---------------- 4. Estruturação e validação --------------------- */
     report({
       stage: 'structuring',
-      progress: 74,
-      message: 'Consolidando blocos (síntese final)',
-      detail: 'Unificando dados repetidos, resolvendo conflitos e montando o documento final.',
+      progress: 88,
+      message: 'Validando estrutura da análise',
+      detail: 'Aplicando schema estrito e normalizando evidências rastreáveis.',
     });
 
-    const index = buildPageIndex(document);
-    const fixedChars = FINAL_SCHEMA_INSTRUCTIONS.length + REDUCE_INSTRUCTIONS.length + 1_200;
-    const budget = computeReduceBudget({
-      partials: partials.length,
-      pageIndexChars: index.reduce((acc, entry) => acc + entry.preview.length + 24, 0),
-      fixedChars,
-      contextTokens: config.ai.contextWindowTokens,
-      budgetRatio: config.ai.promptBudgetRatio,
+    const analise = normalizeAnalysis(rawAnalysis, {
+      dataAnalise,
+      paginas: document.totalPages,
+      caracteres: document.totalChars,
     });
-    if (!budget.fits) {
+
+    const totalEvidencias = countEvidence(analise);
+    if (totalEvidencias < 6) {
       avisos.push(
-        `A síntese final precisou comprimir as extrações parciais para caber na janela de contexto do modelo (${config.ai.contextWindowTokens.toLocaleString('pt-BR')} tokens). Revise o relatório com atenção redobrada.`,
+        'Poucas informações rastreáveis foram encontradas. O documento pode ser um extrato, um aviso de licitação ou ter texto parcialmente ilegível.',
       );
     }
 
-    const reduceCompletion = await createJsonCompletion({
-      messages: [
-        { role: 'system', content: SYSTEM_PROMPT },
-        {
-          role: 'user',
-          content: buildReduceUserPrompt({
-            fileName: options.fileName,
-            pages: document.totalPages,
-            totalChars: document.totalChars,
-            chunkCount: chunks.length,
-            pageIndex: index,
-            partials,
-            budget,
-          }),
-        },
-      ],
-      model: config.ai.synthesisModel,
-      label: 'síntese final',
+    /* --------------------- 5. Relatório / retorno --------------------- */
+    report({
+      stage: 'reporting',
+      progress: 95,
+      message: 'Gerando relatório',
+      detail: 'Consolidando resumo executivo, cronograma, obrigações e checklist.',
     });
-    llmCalls += 1;
-    modelUsed = reduceCompletion.model;
-    track(reduceCompletion.usage);
 
-    const parsedReduce = parseModelJson(reduceCompletion.content, {
-      truncated: reduceCompletion.truncated,
-      label: 'síntese final',
-    });
-    if (parsedReduce.repaired) {
-      avisos.push(
-        'A síntese final foi cortada no limite de tokens de saída e recuperada parcialmente. As últimas seções do relatório podem estar incompletas — confira o edital original.',
-      );
-    }
-    rawAnalysis = parsedReduce.data;
-  }
+    const result: AnalysisResult = {
+      analise,
+      meta: {
+        engine: 'deepseek',
+        model: modelUsed,
+        chunks: chunks.length,
+        llmCalls,
+        tokensEstimados: promptTokens + completionTokens,
+        duracaoMs: Date.now() - startedAt,
+        avisos,
+        custoEstimadoUSD: estimateCostUSD(promptTokens, completionTokens),
+      },
+    };
 
-  /* ---------------- 4. Estruturação e validação --------------------- */
-  report({
-    stage: 'structuring',
-    progress: 88,
-    message: 'Validando estrutura da análise',
-    detail: 'Aplicando schema estrito e normalizando evidências rastreáveis.',
-  });
-
-  const analise = normalizeAnalysis(rawAnalysis, {
-    dataAnalise,
-    paginas: document.totalPages,
-    caracteres: document.totalChars,
-  });
-
-  const totalEvidencias = countEvidence(analise);
-  if (totalEvidencias < 6) {
-    avisos.push(
-      'Poucas informações rastreáveis foram encontradas. O documento pode ser um extrato, um aviso de licitação ou ter texto parcialmente ilegível.',
+    completeJob(
+      jobId,
+      result,
+      `${llmCalls} chamada(s) ao modelo · ${(promptTokens + completionTokens).toLocaleString('pt-BR')} tokens`,
     );
+
+    return result;
+  } catch (error) {
+    // Na demo pública a IA é gratuita e pode estar sobrecarregada: em vez de falhar,
+    // entrega o relatório do motor local e avisa que a leitura foi simplificada.
+    if (!isAppError(error) || !['AI_FAILED', 'AI_INVALID_RESPONSE', 'ANALYSIS_TIMEOUT'].includes(error.code)) throw error;
+    avisos.length = 0;
+    avisos.push('A IA estava indisponível no momento (alta demanda no provedor gratuito). Este relatório foi gerado pelo motor local, mais simples. Tente novamente em alguns minutos para a análise completa com IA.');
+    return motorLocal('IA indisponível agora — usando o analisador determinístico embutido.');
   }
-
-  /* --------------------- 5. Relatório / retorno --------------------- */
-  report({
-    stage: 'reporting',
-    progress: 95,
-    message: 'Gerando relatório',
-    detail: 'Consolidando resumo executivo, cronograma, obrigações e checklist.',
-  });
-
-  const result: AnalysisResult = {
-    analise,
-    meta: {
-      engine: 'deepseek',
-      model: modelUsed,
-      chunks: chunks.length,
-      llmCalls,
-      tokensEstimados: promptTokens + completionTokens,
-      duracaoMs: Date.now() - startedAt,
-      avisos,
-      custoEstimadoUSD: estimateCostUSD(promptTokens, completionTokens),
-    },
-  };
-
-  completeJob(
-    jobId,
-    result,
-    `${llmCalls} chamada(s) ao modelo · ${(promptTokens + completionTokens).toLocaleString('pt-BR')} tokens`,
-  );
-
-  return result;
 }
 
 /** Conta quantas informações rastreáveis a análise efetivamente trouxe. */

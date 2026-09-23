@@ -84,11 +84,14 @@ export async function createJsonCompletion(options: {
   if (!apiKey) {
     throw new AppError('AI_NOT_CONFIGURED', ERROR_MESSAGES.AI_NOT_CONFIGURED, {
       status: 503,
-      hint: 'Defina DEEPSEEK_API_KEY no arquivo .env para habilitar a análise por IA.',
+      hint: 'Defina GEMINI_API_KEY (gratuita) ou DEEPSEEK_API_KEY no arquivo .env para habilitar a análise por IA.',
     });
   }
 
-  const model = options.model ?? config.ai.model;
+  const principal = options.model ?? config.ai.model;
+  const cadeia = [principal, ...config.ai.fallbackModels.filter((m) => m !== principal)];
+  let indiceModelo = 0;
+  let model = principal;
   const url = `${config.ai.baseUrl}/chat/completions`;
   const ceiling = Math.max(options.maxTokens ?? config.ai.maxOutputTokens, config.ai.maxOutputTokensCeiling);
   let budget = options.maxTokens ?? config.ai.maxOutputTokens;
@@ -133,6 +136,14 @@ export async function createJsonCompletion(options: {
           /* mantém o corpo bruto */
         }
         const detail = `HTTP ${response.status} · ${apiMessage}`;
+        // Modelo sobrecarregado ou sem cota: passa para o próximo da cadeia antes de esperar.
+        if ((response.status === 503 || response.status === 429) && indiceModelo < cadeia.length - 1) {
+          indiceModelo += 1;
+          model = cadeia[indiceModelo];
+          console.warn(`[editais] ${detail}. Tentando o modelo ${model}.`);
+          lastError = new AppError('AI_FAILED', ERROR_MESSAGES.AI_FAILED, { status: 502, details: detail });
+          continue;
+        }
         if (errorRetries < config.ai.maxRetries && isRetryable(response.status, apiMessage)) {
           errorRetries += 1;
           await sleep(1200 * 2 ** (errorRetries - 1));
@@ -152,7 +163,7 @@ export async function createJsonCompletion(options: {
             details: detail,
             hint:
               response.status === 401 || response.status === 403
-                ? 'Confira DEEPSEEK_API_KEY no arquivo .env.'
+                ? 'Confira GEMINI_API_KEY (ou DEEPSEEK_API_KEY) no arquivo .env.'
                 : 'O provedor de IA está instável ou indisponível. Tente novamente em instantes.',
           },
         );

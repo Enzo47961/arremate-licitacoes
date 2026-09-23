@@ -15,7 +15,7 @@ export async function collectCapabilities(): Promise<Capabilities> {
   return {
     ai: {
       configured: hasAIProvider(),
-      provider: 'DeepSeek',
+      provider: config.ai.provider === 'gemini' ? 'Google Gemini' : 'DeepSeek',
       baseUrl: config.ai.baseUrl,
       model: config.ai.model,
       synthesisModel: config.ai.synthesisModel,
